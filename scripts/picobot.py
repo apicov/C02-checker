@@ -56,7 +56,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def scd30(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     data = get_scd30()
-    message = f"CO2: {data['CO2']:.2f} ppm \nRH: {data['rHumidity']:.2f} % \
+    message = f"timestamp: {data['timestamp']} \nCO2: {data['CO2']:.2f} ppm \nRH: {data['rHumidity']:.2f} % \
             \nTemp: {data['temperature']:.2f} \u00b0C"
     await update.message.reply_text(message)
 
