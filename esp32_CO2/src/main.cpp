@@ -55,23 +55,10 @@ int get_scd30_data(SCD30_DATA* data)
   }
 }
 
-void print_SCD30_data(SCD30_DATA data, DateTime timestamp)
-{
+void print_SCD30_data(SCD30_DATA data, char * timestamp)
+{ 
   Serial.print("Timestamp: ");
-  Serial.print(timestamp.year(), DEC);
-  Serial.print('/');
-  Serial.print(timestamp.month(), DEC);
-  Serial.print('/');
-  Serial.print(timestamp.day(), DEC);
-  //Serial.print(" (");
-  //Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-  //Serial.print(") ");
-  Serial.print(timestamp.hour(), DEC);
-  Serial.print(':');
-  Serial.print(timestamp.minute(), DEC);
-  Serial.print(':');
-  Serial.print(timestamp.second(), DEC);
-  Serial.println();
+  Serial.println(timestamp);
 
   Serial.print("Temperature: ");
   Serial.print(data.temp);
@@ -87,7 +74,7 @@ void print_SCD30_data(SCD30_DATA data, DateTime timestamp)
   Serial.println("");
 }
 
-int send_scd30_to_server(SCD30_DATA data, DateTime timestamp)
+int send_scd30_to_server(SCD30_DATA data, char * timestamp)
 {
   if(WiFi.status()== WL_CONNECTED){
  
@@ -149,12 +136,13 @@ void setup() {
 
   HTTPClient http;
 
-  /*if (! rtc.begin()) {
+  if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
     Serial.flush();
     while (1) delay(10);
-  }*/
-
+  }
+  //set clock to current time (adjust accordingly)
+  //rtc.adjust(DateTime(2023,11,1,20,4,10));
 
   // Try to initialize!
   if (!scd30.begin()) {
@@ -164,7 +152,7 @@ void setup() {
   Serial.println("SCD30 Found!");
   delay(100);
 
-   if (!scd30.setMeasurementInterval(60)){
+   if (!scd30.setMeasurementInterval(10)){
      Serial.println("Failed to set measurement interval");
      while(1){ delay(10);}
    }
@@ -181,13 +169,19 @@ void loop() {
   delay(13000);*/
 
   int resp = get_scd30_data(&scd30_data);
-  DateTime timestamp ; //rtc.now();
+  DateTime timestamp = rtc.now();
+  char str_datetime[50];
+  sprintf(str_datetime, "%04d-%02d-%02d %02d:%02d:%02d", timestamp.year(),
+        timestamp.month(), timestamp.day(), 
+        timestamp.hour(), timestamp.minute(), timestamp.second());
+
+
 
   if (resp)
   {
     Serial.println("Data available!");
-    print_SCD30_data(scd30_data, timestamp);
-    send_scd30_to_server(scd30_data, timestamp);
+    print_SCD30_data(scd30_data, str_datetime);
+    send_scd30_to_server(scd30_data, str_datetime);
 
   }
   else if (resp == -1)
