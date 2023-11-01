@@ -90,6 +90,7 @@ int send_scd30_to_server(SCD30_DATA data, char * timestamp)
     doc["TEMP"] = data.temp;
     doc["RH"] = data.rh;
     doc["CO2"] = data.co2;
+    doc["DATETIME"] = timestamp;
    
     // Add an array.
     //
@@ -170,7 +171,7 @@ void loop() {
 
   int resp = get_scd30_data(&scd30_data);
   DateTime timestamp = rtc.now();
-  char str_datetime[50];
+  char str_datetime[20];
   sprintf(str_datetime, "%04d-%02d-%02d %02d:%02d:%02d", timestamp.year(),
         timestamp.month(), timestamp.day(), 
         timestamp.hour(), timestamp.minute(), timestamp.second());
