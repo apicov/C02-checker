@@ -2,7 +2,8 @@ from flask import Flask,request,jsonify
 
 app = Flask(__name__)
 
-scd30_data = {"timestamp": "","temperature": 0.0, "rHumidity":0.0, "CO2" : 0.0}
+scd30_data = {"timestamp": "","temperature": 0.0, "rHumidity":0.0, "CO2" : 0.0,
+        "people":0}
 
 @app.route('/sensors/scd30', methods=['POST'])
 def get_scd30_data():
@@ -13,6 +14,7 @@ def get_scd30_data():
        scd30_data["temperature"] = content["TEMP"]
        scd30_data["rHumidity"] = content["RH"]
        scd30_data["CO2"] = content["CO2"]
+       scd30_data["people"] = content["PEOPLE"]
 
        print(scd30_data)
     return content

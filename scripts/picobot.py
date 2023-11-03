@@ -56,8 +56,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def scd30(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     data = get_scd30()
-    message = f"timestamp: {data['timestamp']} \nCO2: {data['CO2']:.2f} ppm \nRH: {data['rHumidity']:.2f} % \
-            \nTemp: {data['temperature']:.2f} \u00b0C"
+    message = f'''timestamp: {data['timestamp']}
+CO2: {data['CO2']:.2f} ppm 
+RH: {data['rHumidity']:.2f} %
+Temp: {data['temperature']:.2f} \u00b0C
+People: {data['people']}'''
+
     await update.message.reply_text(message)
 
 
@@ -77,7 +81,4 @@ if __name__ == "__main__":
 #updater.dispatcher.add_handler(CommandHandler('scd30', scd30))
 
 #updater.start_polling()
-
-
-
 
