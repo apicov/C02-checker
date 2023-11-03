@@ -4,6 +4,7 @@
 #include "HTTPClient.h"
 #include <ArduinoJson.h>
 #include <Adafruit_SCD30.h>
+#include <ESP32Ping.h>
 
 #include "RTClib.h"
 #include "private_data.h"
@@ -12,9 +13,6 @@ int LED_BUILTIN = 2;
 
 RTC_DS3231 rtc;
 
-
-
-void WiFiEvent(WiFiEvent_t event);
 
 uint64_t chipid;
 HTTPClient http;
@@ -29,6 +27,20 @@ typedef struct
   } SCD30_DATA;
 
 SCD30_DATA scd30_data;
+
+
+int ping_phone(IPAddress phone_ip){
+  Serial.print("Pinging ip ");
+  Serial.println(phone_ip);
+
+  if(Ping.ping(phone_ip)) {
+    Serial.println("Success!!\n");
+    return 1;
+  } else {
+    Serial.println("Error :(\n");
+    return 0;
+  }
+}
 
 void initWiFi() {
   WiFi.mode(WIFI_STA);
@@ -76,10 +88,10 @@ void print_SCD30_data(SCD30_DATA data, char * timestamp)
   Serial.print("CO2: ");
   Serial.print(data.co2, 3);
   Serial.println(" ppm");
-  Serial.println("");
+  //Serial.println("");
 }
 
-int send_scd30_to_server(SCD30_DATA data, char * timestamp)
+int send_data_to_server(SCD30_DATA data, char * timestamp, int number_of_people_in_room)
 {
   if(WiFi.status()== WL_CONNECTED){
  
@@ -96,6 +108,7 @@ int send_scd30_to_server(SCD30_DATA data, char * timestamp)
     doc["RH"] = data.rh;
     doc["CO2"] = data.co2;
     doc["DATETIME"] = timestamp;
+    doc["PEOPLE"] = number_of_people_in_room;
    
     // Add an array.
     //
@@ -182,19 +195,28 @@ void loop() {
 
   int resp = get_scd30_data(&scd30_data);
 
-  DateTime timestamp = rtc.now();
-  char str_datetime[20];
-  sprintf(str_datetime, "%04d-%02d-%02d %02d:%02d:%02d", timestamp.year(),
-        timestamp.month(), timestamp.day(), 
-        timestamp.hour(), timestamp.minute(), timestamp.second());
-
-
 
   if (resp)
   {
+
+    DateTime timestamp = rtc.now();
+    char str_datetime[20];
+    sprintf(str_datetime, "%04d-%02d-%02d %02d:%02d:%02d", timestamp.year(),
+        timestamp.month(), timestamp.day(), 
+        timestamp.hour(), timestamp.minute(), timestamp.second());
+
     Serial.println("Data available!");
+
+    //pings to phone ip to check if im present in room or not
+    int number_of_people_in_room = ping_phone(phone_ip);
+
     print_SCD30_data(scd30_data, str_datetime);
-    send_scd30_to_server(scd30_data, str_datetime);
+    Serial.print("people: ");
+    Serial.println(number_of_people_in_room);
+    Serial.println("");
+
+
+    send_data_to_server(scd30_data, str_datetime, number_of_people_in_room);
 
   }
   else if (resp == -1)
