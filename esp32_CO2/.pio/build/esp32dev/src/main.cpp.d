@@ -241,4 +241,8 @@
  .pio/libdeps/esp32dev/Adafruit\ Unified\ Sensor/Adafruit_Sensor.h \
  .pio/libdeps/esp32dev/ESP32Ping/ESP32Ping.h \
  .pio/libdeps/esp32dev/ESP32Ping/ping.h \
- .pio/libdeps/esp32dev/RTClib/src/RTClib.h include/private_data.h
+ .pio/libdeps/esp32dev/RTClib/src/RTClib.h include/private_data.h \
+ .pio/libdeps/esp32dev/Grove\ -\ Laser\ PM2.5\ Sensor\ HM3301/src/Seeed_HM330X.h \
+ .pio/libdeps/esp32dev/Grove\ -\ Laser\ PM2.5\ Sensor\ HM3301/src/HM330XErrorCode.h \
+ .pio/libdeps/esp32dev/Grove\ -\ Laser\ PM2.5\ Sensor\ HM3301/src/I2COperations.h \
+ .pio/libdeps/esp32dev/Adafruit\ SGP30\ Sensor/Adafruit_SGP30.h

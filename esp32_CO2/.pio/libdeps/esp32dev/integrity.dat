@@ -1,4 +1,6 @@
-bblanchon/ArduinoJson@^6.19.4
 adafruit/RTClib@^2.1.1
+adafruit/Adafruit SGP30 Sensor@^2.0.0
 marian-craciunescu/ESP32Ping@^1.7
 adafruit/Adafruit SCD30@^1.0.9
+bblanchon/ArduinoJson@^6.19.4
+seeed-studio/Grove - Laser PM2.5 Sensor HM3301@^1.0.3
