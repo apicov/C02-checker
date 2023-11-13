@@ -197,7 +197,7 @@ void loop() {
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
   // read it for a minute
-  for (int i = 0; i<60; i++){
+  for (int i = 0; i<35; i++){
     delay(1000);
     sgp30_resp = sgp30_get_data(scd30_data.temp, scd30_data.rh);
   }
