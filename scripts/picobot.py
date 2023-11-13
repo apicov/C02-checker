@@ -71,7 +71,7 @@ RAW_ETHANOL: {data['RAW_ETHANOL']}
 BASELINE_ECO2: {data['BASELINE_ECO2']}
 BASELINE_TVOC: {data['BASELINE_TVOC']}
 
-People: {data['people']}
+People: {data['PEOPLE']}
 '''
 
     await update.message.reply_text(message)
