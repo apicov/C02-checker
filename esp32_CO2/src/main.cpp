@@ -21,6 +21,7 @@ RTC_DS3231 rtc;
 uint64_t chipid;
 HTTPClient http;
 
+//co2 sensor
 Adafruit_SCD30  scd30;
 
 typedef struct 
@@ -31,20 +32,26 @@ typedef struct
   } SCD30_DATA;
 
 SCD30_DATA scd30_data;
+int scd30_init_status = -1;
+int scd30_init();
 
+
+///////
 int number_of_people_in_room;
 int ping_phone(IPAddress phone_ip);
 
 void initWiFi();
 int send_data_to_server();
 
-//co2 sensor
+
 int get_scd30_data(SCD30_DATA* data);
 void print_SCD30_data(SCD30_DATA data, char * timestamp);
 
 //rtc clock
 char str_datetime[20];
 void read_rtc(char *str_datetime);
+int rtc_init_status = -1;
+int rtc_init();
 
 
 //dust sensor hm3301
@@ -74,6 +81,8 @@ HM330XErrorCode hm3301_print_results(uint16_t *values);
 HM330XErrorCode hm3301_parse_result(uint8_t *data, uint16_t *values);
 int hm3301_get_data( uint16_t *values);
 
+int hm3301_init_status = -1;
+int hm3301_init();
 
 //VOC sensor
 Adafruit_SGP30 sgp30;
@@ -82,8 +91,8 @@ int sgp30_get_data(float temperature, float humidity);
 uint32_t getAbsoluteHumidity(float temperature, float humidity);
 void sgp30_print_data();
 int sgp30_get_baseline_calibration(uint16_t *eCO2_base, uint16_t *TVOC_base);
-
-
+int sgp30_init_status = -1;
+int sgp30_init();
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
@@ -94,59 +103,10 @@ void setup() {
   Serial.print("RRSI: ");
   Serial.println(WiFi.RSSI());
 
-  HTTPClient http;
-  ////////////
-
-  if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
-    while (1) delay(10);
-  }
-  else{
-    Serial.println("RTC found");
-  }
-  //set clock to current time (adjust accordingly)
-  //rtc.adjust(DateTime(2023,11,1,20,4,10));
-///////////////
-
-
-// Try to initialize!
-  if (!scd30.begin()) {
-    Serial.println("Failed to find SCD30 chip");
-    while (1) { delay(10); }
-  }
-  Serial.println("SCD30 Found!");
-  delay(100);
-
-   if (!scd30.setMeasurementInterval(30)){
-     Serial.println("Failed to set measurement interval");
-     while(1){ delay(10);}
-   }
-  Serial.print("Measurement Interval: "); 
-  Serial.print(scd30.getMeasurementInterval()); 
-  Serial.println(" seconds");
-  ///////////////////
-  
-
-  if (hm3301_sensor.init()) {
-        Serial.println("HM330X init failed!!!");
-        while (1) { delay(10); }
-    }
-    else{
-      Serial.println("HM3301 found");
-    }
-  /////////////////////////////////
-
-  if (! sgp30.begin()){
-    Serial.println("sgp30 Sensor not found :(");
-    while (1);
-  }
-  else{
-    Serial.print("Found SGP30 serial #");
-    Serial.print(sgp30.serialnumber[0], HEX);
-    Serial.print(sgp30.serialnumber[1], HEX);
-    Serial.println(sgp30.serialnumber[2], HEX);
-  }
+  rtc_init_status = rtc_init();
+  scd30_init_status = scd30_init();
+  hm3301_init_status = hm3301_init();
+  sgp30_init_status = sgp30_init();
 
   //wait for a minute to ensure there will be data available from the co2 sensor
   delay(60000);
@@ -197,7 +157,7 @@ void loop() {
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
   // read it for a minute
-  for (int i = 0; i<35; i++){
+  for (int i = 0; i<40; i++){
     delay(1000);
     sgp30_resp = sgp30_get_data(scd30_data.temp, scd30_data.rh);
   }
@@ -210,7 +170,7 @@ int ping_phone(IPAddress phone_ip){
   Serial.print("Pinging ip ");
   Serial.println(phone_ip);
 
-  if(Ping.ping(phone_ip)) {
+  if(Ping.ping(phone_ip,2)) {
     Serial.println("Success!!\n");
     return 1;
   } else {
@@ -338,14 +298,12 @@ int send_data_to_server()
 
 
 
-
 void read_rtc(char *str_datetime){
   DateTime timestamp = rtc.now();
   sprintf(str_datetime, "%04d-%02d-%02d %02d:%02d:%02d", timestamp.year(),
         timestamp.month(), timestamp.day(), 
         timestamp.hour(), timestamp.minute(), timestamp.second());
 }
-
 
 
 
@@ -441,4 +399,65 @@ void sgp30_print_data(){
   Serial.print(" & TVOC: 0x"); Serial.println(TVOC_base, HEX);
   Serial.print("****Baseline values: eCO2: "); Serial.print(eCO2_base);
   Serial.print(" & TVOC: "); Serial.println(TVOC_base);
+}
+
+
+
+int rtc_init(){
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    return -1;
+  }
+  else{
+    Serial.println("RTC found");
+    return 0;
+  }
+  //set clock to current time (adjust accordingly)
+  //rtc.adjust(DateTime(2023,11,1,20,4,10));
+  ///////////////
+}
+
+int scd30_init(){
+  if (!scd30.begin()) {
+    Serial.println("Failed to find SCD30 chip");
+    return -1;
+  }
+  Serial.println("SCD30 Found!");
+  delay(100);
+
+  if (!scd30.setMeasurementInterval(30)){
+    Serial.println("Failed to set measurement interval");
+    return -1;
+  }
+
+  Serial.print("Measurement Interval: "); 
+  Serial.print(scd30.getMeasurementInterval()); 
+  Serial.println(" seconds");
+  return 0;
+  ///////////////////
+}
+
+int hm3301_init(){
+  if (hm3301_sensor.init()) {
+        Serial.println("HM330X init failed!!!");
+        return -1;
+    }
+    else{
+      Serial.println("HM3301 found");
+      return 0;
+    }
+}
+
+int sgp30_init(){
+  if (! sgp30.begin()){
+    Serial.println("sgp30 Sensor not found :(");
+    return -1;
+  }
+  else{
+    Serial.print("Found SGP30 serial #");
+    Serial.print(sgp30.serialnumber[0], HEX);
+    Serial.print(sgp30.serialnumber[1], HEX);
+    Serial.println(sgp30.serialnumber[2], HEX);
+    return 0;
+  }
 }
