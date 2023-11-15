@@ -94,6 +94,40 @@ int sgp30_get_baseline_calibration(uint16_t *eCO2_base, uint16_t *TVOC_base);
 int sgp30_init_status = -1;
 int sgp30_init();
 
+/////////////
+//all sensors
+typedef struct 
+  {
+    char str_datetime[20];
+    int rtc_status;
+
+    float scd30_co2;
+    float scd30_rh;
+    float scd30_temp;
+    int scd30_status;
+
+    unsigned int hm3301_pm1_0;
+    unsigned int hm3301_pm_2_5;
+    unsigned int hm3301_pm_10;
+    int hm3301_status;
+
+    unsigned int sgp30_TVOC;
+    unsigned int sgp30_eCO2;
+    unsigned int sgp30_rawH2;
+    unsigned int sgp30_rawEthanol;
+    uint16_t sgp30_eCO2_base;
+    uint16_t sgp30_TVOC_base;
+    int sgp30_status;
+
+    unsigned int n_people;
+
+
+  } SENSOR_DATA;
+
+SENSOR_DATA sensor_data[1000000];
+void init_sensors();
+
+
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
@@ -103,10 +137,7 @@ void setup() {
   Serial.print("RRSI: ");
   Serial.println(WiFi.RSSI());
 
-  rtc_init_status = rtc_init();
-  scd30_init_status = scd30_init();
-  hm3301_init_status = hm3301_init();
-  sgp30_init_status = sgp30_init();
+  init_sensors();
 
   //wait for a minute to ensure there will be data available from the co2 sensor
   delay(60000);
@@ -460,4 +491,18 @@ int sgp30_init(){
     Serial.println(sgp30.serialnumber[2], HEX);
     return 0;
   }
+}
+
+
+void init_sensors(){
+  //check status of sensors
+  //if not initialized (-1), initialize
+  if (rtc_init_status == -1)
+    rtc_init_status = rtc_init();
+  if (scd30_init_status == -1)
+    scd30_init_status = scd30_init();
+  if (hm3301_init_status == -1)
+    hm3301_init_status = hm3301_init();
+  if (sgp30_init_status == -1)
+    sgp30_init_status = sgp30_init();
 }
