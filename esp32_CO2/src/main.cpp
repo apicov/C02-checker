@@ -23,15 +23,6 @@ HTTPClient http;
 
 //co2 sensor
 Adafruit_SCD30  scd30;
-
-typedef struct 
-  {
-    float co2;
-    float rh;
-    float temp;
-  } SCD30_DATA;
-
-SCD30_DATA scd30_data;
 int scd30_init_status = -1;
 int scd30_init();
 
@@ -41,11 +32,11 @@ int number_of_people_in_room;
 int ping_phone(IPAddress phone_ip);
 
 void initWiFi();
-int send_data_to_server();
 
 
-int get_scd30_data(SCD30_DATA* data);
-void print_SCD30_data(SCD30_DATA data, char * timestamp);
+
+int get_scd30_data();
+void print_SCD30_data(char * timestamp);
 
 //rtc clock
 char str_datetime[20];
@@ -124,9 +115,61 @@ typedef struct
 
   } SENSOR_DATA;
 
-SENSOR_DATA sensor_data[1000000];
-void init_sensors();
+SENSOR_DATA sensor_data[1];
 
+#define RING_BUFFER_SIZE 4
+typedef struct 
+{
+  SENSOR_DATA sensor_data[RING_BUFFER_SIZE];
+  unsigned  int count = 0;
+  unsigned int tail = 0;
+  unsigned int head = 0;
+} RING_BUFFER;
+
+RING_BUFFER ring_buffer;
+
+void copy_data_to_ringbuffer(RING_BUFFER *buffer);
+
+int isFull(RING_BUFFER *buffer){
+  return buffer->count ==  RING_BUFFER_SIZE;
+}
+
+int enqueue(RING_BUFFER *buffer){
+    //if buffer is already full, it will
+    //overwrite the element in tail
+    if (isFull(buffer)){
+      //adjust new tail position
+      buffer->tail = (buffer->tail + 1 ) & (RING_BUFFER_SIZE -1);
+    }
+
+    copy_data_to_ringbuffer(buffer);
+
+    //and operation is equivalent to modulo (%)
+    //when the size of the buffer is a power of 2
+    buffer->head = (buffer->head + 1 ) & (RING_BUFFER_SIZE -1);
+    
+    buffer->count++;
+    if (buffer->count > RING_BUFFER_SIZE){
+      buffer->count = RING_BUFFER_SIZE;
+      //return 1;
+    }
+
+    if (isFull(buffer)){
+      Serial.println("buffer full");
+    }
+    Serial.print("tail:");
+    Serial.println(buffer->tail);
+    Serial.print("head:");
+    Serial.println(buffer->head);
+    Serial.print("count:");
+    Serial.println(buffer->count);
+
+    return 0;
+}
+
+
+void init_sensors();
+int send_data_to_server(SENSOR_DATA *data);
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
@@ -155,9 +198,9 @@ void loop() {
   }
 
   //wait for co2 sensor to have available data
-  int resp = 0;
-  while(resp == 0 || resp == -1){
-    resp = get_scd30_data(&scd30_data);
+  int resp = 1;
+  while(resp == 1 || resp == -1){
+    resp = get_scd30_data();
     if (resp == -1){
       Serial.println("error scd30");
     }
@@ -168,12 +211,12 @@ void loop() {
 
   read_rtc(str_datetime);
 
-  print_SCD30_data(scd30_data, str_datetime);
+  print_SCD30_data(str_datetime);
 
   int hm3301_resp = hm3301_get_data(hm3301_values);
   hm3301_print_results(hm3301_values);
 
-  int sgp30_resp = sgp30_get_data(scd30_data.temp, scd30_data.rh);
+  int sgp30_resp = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
   sgp30_get_baseline_calibration(&TVOC_base, &eCO2_base);
   sgp30_print_data();
 
@@ -183,14 +226,16 @@ void loop() {
   Serial.println(number_of_people_in_room);
   Serial.println("");
 
-  send_data_to_server();
+  //copy_data_to_array(0);
+  //send_data_to_server(&sensor_data[0]);
+  enqueue(&ring_buffer);
 
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
   // read it for a minute
   for (int i = 0; i<40; i++){
     delay(1000);
-    sgp30_resp = sgp30_get_data(scd30_data.temp, scd30_data.rh);
+    sgp30_resp = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
   }
 
 }
@@ -224,42 +269,38 @@ void initWiFi() {
   Serial.println(WiFi.localIP());
 }
 
-int get_scd30_data(SCD30_DATA* data)
+int get_scd30_data()
 {
     if (scd30.dataReady())
     {
       if (!scd30.read()){ return -1; }
-
-      data->co2 = scd30.CO2;
-      data->rh = scd30.relative_humidity;
-      data->temp = scd30.temperature;
-
+      return 0;
+    } 
+    else {
       return 1;
-  } else {
-    return 0;
-  }
+    }
 }
 
-void print_SCD30_data(SCD30_DATA data, char * timestamp)
+void print_SCD30_data( char * timestamp)
 { 
   Serial.print("Timestamp: ");
   Serial.println(timestamp);
 
   Serial.print("Temperature: ");
-  Serial.print(data.temp);
+  Serial.print(scd30.temperature);
   Serial.println(" degrees C");
   
   Serial.print("Relative Humidity: ");
-  Serial.print(data.rh);
+  Serial.print(scd30.relative_humidity);
   Serial.println(" %");
   
   Serial.print("CO2: ");
-  Serial.print(data.co2, 3);
+  Serial.print(scd30.CO2, 3);
   Serial.println(" ppm");
   //Serial.println("");
 }
 
-int send_data_to_server()
+int send_data_to_server(SENSOR_DATA *data)
 {
   if(WiFi.status()== WL_CONNECTED){
  
@@ -269,28 +310,31 @@ int send_data_to_server()
    //http.addHeader("Content-Type", "text/plain"); 
    http.addHeader("Content-Type", "application/json");           
  
-   StaticJsonDocument<300> doc;
+   StaticJsonDocument<350> doc;
     // Add values in the document
     //
-    doc["DATETIME"] = str_datetime;
+    doc["DATETIME"] = data->str_datetime;
+    doc["DATETIME_STAT"] = data->rtc_status;
 
-    doc["TEMP"] = scd30_data.temp;
-    doc["RH"] = scd30_data.rh;
-    doc["CO2"] = scd30_data.co2;
+    doc["TEMP"] = data->scd30_temp;
+    doc["RH"] = data->scd30_rh;
+    doc["CO2"] = data->scd30_co2;
+    doc["SCD30_STAT"] = data->scd30_status;
 
-    doc["PM1_0"] = hm3301_data.pm1_0;
-    doc["PM2_5"] = hm3301_data.pm_2_5;
-    doc["PM10"] = hm3301_data.pm_10;
+    doc["PM1_0"] = data->hm3301_pm1_0;
+    doc["PM2_5"] = data->hm3301_pm_2_5;
+    doc["PM10"] = data->hm3301_pm_10;
+    doc["HM3301_STAT"] = data->hm3301_status;
 
-    doc["TVOC"] = sgp30.TVOC;
-    doc["ECO2"] = sgp30.eCO2;
-    doc["RAW_H2"] = sgp30.rawH2;
-    doc["RAW_ETHANOL"] = sgp30.rawEthanol;
-    doc["BASELINE_ECO2"] = eCO2_base;
-    doc["BASELINE_TVOC"] = TVOC_base;
-
+    doc["TVOC"] = data->sgp30_TVOC;
+    doc["ECO2"] = data->sgp30_eCO2;
+    doc["RAW_H2"] = data->sgp30_rawH2;
+    doc["RAW_ETHANOL"] = data->sgp30_rawEthanol;
+    doc["BASELINE_ECO2"] = data->sgp30_eCO2_base;
+    doc["BASELINE_TVOC"] = data->sgp30_TVOC_base;
+    doc["SGP30_STAT"] = data->sgp30_status;
     
-    doc["PEOPLE"] = number_of_people_in_room;
+    doc["PEOPLE"] = data->n_people;
    
     // Add an array.
     //
@@ -505,4 +549,32 @@ void init_sensors(){
     hm3301_init_status = hm3301_init();
   if (sgp30_init_status == -1)
     sgp30_init_status = sgp30_init();
+}
+
+
+void copy_data_to_ringbuffer(RING_BUFFER *buffer){
+  int idx = buffer->head;
+
+  strcpy(buffer->sensor_data[idx].str_datetime, str_datetime);
+  buffer->sensor_data[idx].rtc_status = 0;
+
+  buffer->sensor_data[idx].scd30_co2 = scd30.CO2;
+  buffer->sensor_data[idx].scd30_rh = scd30.relative_humidity;
+  buffer->sensor_data[idx].scd30_temp = scd30.temperature;
+  buffer->sensor_data[idx].scd30_status = 0;
+
+  buffer->sensor_data[idx].hm3301_pm1_0 = hm3301_data.pm1_0;
+  buffer->sensor_data[idx].hm3301_pm_2_5 = hm3301_data.pm_2_5;
+  buffer->sensor_data[idx].hm3301_pm_10 = hm3301_data.pm_10;
+  buffer->sensor_data[idx].hm3301_status = 0;
+
+  buffer->sensor_data[idx].sgp30_TVOC = sgp30.TVOC;
+  buffer->sensor_data[idx].sgp30_eCO2 = sgp30.eCO2;
+  buffer->sensor_data[idx].sgp30_rawH2 = sgp30.rawH2;
+  buffer->sensor_data[idx].sgp30_rawEthanol = sgp30.rawEthanol;
+  buffer->sensor_data[idx].sgp30_eCO2_base = eCO2_base;
+  buffer->sensor_data[idx].sgp30_TVOC_base = TVOC_base;
+  buffer->sensor_data[idx].sgp30_status = 0;
+
+  buffer->sensor_data[idx].n_people = number_of_people_in_room;
 }
