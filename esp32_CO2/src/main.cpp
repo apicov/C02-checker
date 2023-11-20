@@ -24,6 +24,7 @@ HTTPClient http;
 //co2 sensor
 Adafruit_SCD30  scd30;
 int scd30_init_status = -1;
+int scd30_read_status = -1;
 int scd30_init();
 
 
@@ -42,6 +43,7 @@ void print_SCD30_data(char * timestamp);
 char str_datetime[20];
 void read_rtc(char *str_datetime);
 int rtc_init_status = -1;
+int rtc_read_status = -1;
 int rtc_init();
 
 
@@ -73,6 +75,7 @@ HM330XErrorCode hm3301_parse_result(uint8_t *data, uint16_t *values);
 int hm3301_get_data( uint16_t *values);
 
 int hm3301_init_status = -1;
+int hm3301_read_status = -1;
 int hm3301_init();
 
 //VOC sensor
@@ -83,10 +86,13 @@ uint32_t getAbsoluteHumidity(float temperature, float humidity);
 void sgp30_print_data();
 int sgp30_get_baseline_calibration(uint16_t *eCO2_base, uint16_t *TVOC_base);
 int sgp30_init_status = -1;
+int sgp30_read_status = -1;
 int sgp30_init();
 
 /////////////
 //all sensors
+
+
 typedef struct 
   {
     char str_datetime[20];
@@ -111,13 +117,15 @@ typedef struct
     int sgp30_status;
 
     unsigned int n_people;
+    int n_people_status;
 
 
   } SENSOR_DATA;
 
 SENSOR_DATA sensor_data[1];
+int send_data_to_server(SENSOR_DATA *data);
 
-#define RING_BUFFER_SIZE 4
+#define RING_BUFFER_SIZE 8
 typedef struct 
 {
   SENSOR_DATA sensor_data[RING_BUFFER_SIZE];
@@ -129,47 +137,16 @@ typedef struct
 RING_BUFFER ring_buffer;
 
 void copy_data_to_ringbuffer(RING_BUFFER *buffer);
-
-int isFull(RING_BUFFER *buffer){
-  return buffer->count ==  RING_BUFFER_SIZE;
-}
-
-int enqueue(RING_BUFFER *buffer){
-    //if buffer is already full, it will
-    //overwrite the element in tail
-    if (isFull(buffer)){
-      //adjust new tail position
-      buffer->tail = (buffer->tail + 1 ) & (RING_BUFFER_SIZE -1);
-    }
-
-    copy_data_to_ringbuffer(buffer);
-
-    //and operation is equivalent to modulo (%)
-    //when the size of the buffer is a power of 2
-    buffer->head = (buffer->head + 1 ) & (RING_BUFFER_SIZE -1);
-    
-    buffer->count++;
-    if (buffer->count > RING_BUFFER_SIZE){
-      buffer->count = RING_BUFFER_SIZE;
-      //return 1;
-    }
-
-    if (isFull(buffer)){
-      Serial.println("buffer full");
-    }
-    Serial.print("tail:");
-    Serial.println(buffer->tail);
-    Serial.print("head:");
-    Serial.println(buffer->head);
-    Serial.print("count:");
-    Serial.println(buffer->count);
-
-    return 0;
-}
-
+int isFull(RING_BUFFER *buffer);
+int isEmpty(RING_BUFFER *buffer);
+int enqueue(RING_BUFFER *buffer);
+int dequeue(RING_BUFFER *buffer);
 
 void init_sensors();
-int send_data_to_server(SENSOR_DATA *data);
+
+int people_read_status = -1;
+
+
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
@@ -184,6 +161,7 @@ void setup() {
 
   //wait for a minute to ensure there will be data available from the co2 sensor
   delay(60000);
+
 }
 
 
@@ -192,51 +170,143 @@ void loop() {
   Serial.printf("ESP32 Chip ID = %04X",(uint16_t)(chipid>>32));//print High 2 bytes
   Serial.printf("%08X\n",(uint32_t)chipid);//print Low 4bytes.
   delay(13000);*/
+
+  //connect to network in case there is no conection
   if (WiFi.status() != WL_CONNECTED){
     initWiFi();
     Serial.print("wifi connected.");
   }
 
-  //wait for co2 sensor to have available data
-  int resp = 1;
-  while(resp == 1 || resp == -1){
-    resp = get_scd30_data();
-    if (resp == -1){
+  //try to reinitialize sensors with init_status -1
+  init_sensors();
+
+  //if sensor scd30 was correctly initialized
+  if (scd30_init_status == 0 ){
+
+    //wait for co2 sensor to have available data
+    scd30_read_status = get_scd30_data();
+    while(scd30_read_status == 1){
+      scd30_read_status = get_scd30_data();
+      delay(1000);
+    }
+
+    if (scd30_read_status == -1){
       Serial.println("error scd30");
     }
-    delay(1000);
+
+    print_SCD30_data(str_datetime);
   }
-   
-  Serial.println("Data available!");
+  else{
+    scd30_read_status = -1;
+  }
 
-  read_rtc(str_datetime);
 
-  print_SCD30_data(str_datetime);
 
-  int hm3301_resp = hm3301_get_data(hm3301_values);
-  hm3301_print_results(hm3301_values);
+  if (rtc_init_status == 0){
+    read_rtc(str_datetime);
+    rtc_read_status = 0;
+  }
+  else{
+    rtc_read_status = -1;
+    //poner que lea hora del internet
+    Serial.println("rtc not found");
+  }
+  
 
-  int sgp30_resp = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
-  sgp30_get_baseline_calibration(&TVOC_base, &eCO2_base);
-  sgp30_print_data();
+  if (hm3301_init_status == 0){
+    hm3301_read_status = hm3301_get_data(hm3301_values);
+    hm3301_print_results(hm3301_values);
 
-  //pings to phone ip to check if im present in room or not
-  number_of_people_in_room = ping_phone(phone_ip_p) + ping_phone(phone_ip_u);
-  Serial.print("people: ");
-  Serial.println(number_of_people_in_room);
-  Serial.println("");
+    if(hm3301_read_status ==-1){
+      Serial.println("HM330X read result failed!!!");
+    }
+  }
+  else{
+    hm3301_read_status = -1;
+  }
 
-  //copy_data_to_array(0);
-  //send_data_to_server(&sensor_data[0]);
+
+  if (sgp30_init_status == 0){
+    //if scd30 is working, use its temp and humidity readings
+    // to compensate and improve sgp30 accuracy
+    if ((scd30_init_status == 0) && (scd30_read_status == 0)){
+      sgp30_read_status = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
+    }
+    else{//dont use compensation
+      sgp30_read_status = sgp30_get_data(-100.0,-100.0);
+    }
+
+    sgp30_get_baseline_calibration(&TVOC_base, &eCO2_base);
+    sgp30_print_data();
+
+    if(sgp30_read_status ==-1){
+      Serial.println("sgp30 Measurement failed");
+    }
+
+  }
+  else{
+    sgp30_read_status = -1;
+  }
+
+  if (WiFi.status() == WL_CONNECTED){
+    //pings to phone ip to check if im present in room or not
+    number_of_people_in_room = ping_phone(phone_ip_p) + ping_phone(phone_ip_u);
+    Serial.print("people: ");
+    Serial.println(number_of_people_in_room);
+    Serial.println("");
+    people_read_status = 0;
+  }
+  else{
+    people_read_status = -1;
+  }
+
+  //push data to buffer
   enqueue(&ring_buffer);
+
+ 
+  //if connected to the network, send data in buffer to server
+  if((WiFi.status() == WL_CONNECTED)){
+    while (!isEmpty(&ring_buffer)){
+      dequeue(&ring_buffer);
+    }
+  }
+
+
+  if (isFull(&ring_buffer)){
+      Serial.println("buffer full");
+    }
+    Serial.print("tail:");
+    Serial.println(ring_buffer.tail);
+    Serial.print("head:");
+    Serial.println(ring_buffer.head);
+    Serial.print("count:");
+    Serial.println(ring_buffer.count);
+
+
+
 
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
   // read it for a minute
   for (int i = 0; i<40; i++){
     delay(1000);
-    sgp30_resp = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
+
+    if( sgp30_init_status == 0){
+
+      if ((scd30_init_status == 0) && (scd30_read_status == 0)){
+        sgp30_get_data(scd30.temperature, scd30.relative_humidity);
+      }
+      else{//dont use compensation
+        sgp30_get_data(-100.0,-100.0);
+      }
+      
+    }
+
   }
+
+  
+
+
 
 }
 
@@ -273,8 +343,21 @@ int get_scd30_data()
 {
     if (scd30.dataReady())
     {
-      if (!scd30.read()){ return -1; }
-      return 0;
+      //try to read 3 times
+      for(int i=0; i<3 ; i++){
+        if (scd30.read()){
+          //if sensor was read, return ok status
+          return 0;
+        }
+        Serial.println("scd30 not read");
+        delay(100);
+      }
+      //if after 3 attempts sensor does not
+      //respond, send error status and
+      //set init status to -1 so next time
+      //the uc reinitializes the sensor.
+      scd30_init_status = -1;
+      return -1;
     } 
     else {
       return 1;
@@ -384,18 +467,29 @@ void read_rtc(char *str_datetime){
 
 
 int hm3301_get_data( uint16_t *values){
-  if (hm3301_sensor.read_sensor_value(hm3301_buf, 29)) {
-          Serial.println("HM330X read result failed!!!");
-          return -1;
-      }
-      hm3301_parse_result(hm3301_buf, values);
+  //try to read sensor 3 times
+  for(int i=0; i<3 ; i++){
 
+    if (hm3301_sensor.read_sensor_value(hm3301_buf, 29) == NO_ERROR){
+      hm3301_parse_result(hm3301_buf, values);
       //copy values to sensor structure
       hm3301_data.sensor_number = values[0];
       hm3301_data.pm1_0 = values[4];
       hm3301_data.pm_2_5 = values[5];
       hm3301_data.pm_10 = values[6];
       return 0;
+    }
+
+    
+    delay(100);
+  }
+
+  //if after 3 attempts sensor does not
+  //respond, send error status and
+  //set init status to -1 so next time
+  //the uc reinitializes the sensor.
+  hm3301_init_status = -1;
+  return -1;
 }
 
 HM330XErrorCode hm3301_print_results(uint16_t *values) {
@@ -438,18 +532,18 @@ int sgp30_get_data(float temperature, float humidity){
     sgp30.setHumidity(getAbsoluteHumidity(temperature, humidity));
   }
 
-  //read voc and eCO2
-  if (! sgp30.IAQmeasure()) {
-      Serial.println("sgp30 Measurement failed");
-      return -1;
+  for (int i=0; i<3; i++){
+    //read voc and eCO2               raw h2 and ethanol 
+    if(sgp30.IAQmeasure() && sgp30.IAQmeasureRaw()){
+      return 0;
     }
-
-  // read raw h2 and ethanol
-  if (! sgp30.IAQmeasureRaw()) {
-    Serial.println("sgp30 Raw Measurement failed");
-    return -1;
+    
+    Serial.println("sgp30 not read");
+    delay(100);
   }
-  return 0;
+
+  sgp30_init_status = -1;
+  return -1;
 }
 
 int sgp30_get_baseline_calibration(uint16_t *eCO2_base, uint16_t *TVOC_base){
@@ -556,17 +650,17 @@ void copy_data_to_ringbuffer(RING_BUFFER *buffer){
   int idx = buffer->head;
 
   strcpy(buffer->sensor_data[idx].str_datetime, str_datetime);
-  buffer->sensor_data[idx].rtc_status = 0;
+  buffer->sensor_data[idx].rtc_status = rtc_read_status;
 
   buffer->sensor_data[idx].scd30_co2 = scd30.CO2;
   buffer->sensor_data[idx].scd30_rh = scd30.relative_humidity;
   buffer->sensor_data[idx].scd30_temp = scd30.temperature;
-  buffer->sensor_data[idx].scd30_status = 0;
+  buffer->sensor_data[idx].scd30_status = scd30_read_status;
 
   buffer->sensor_data[idx].hm3301_pm1_0 = hm3301_data.pm1_0;
   buffer->sensor_data[idx].hm3301_pm_2_5 = hm3301_data.pm_2_5;
   buffer->sensor_data[idx].hm3301_pm_10 = hm3301_data.pm_10;
-  buffer->sensor_data[idx].hm3301_status = 0;
+  buffer->sensor_data[idx].hm3301_status = hm3301_read_status;
 
   buffer->sensor_data[idx].sgp30_TVOC = sgp30.TVOC;
   buffer->sensor_data[idx].sgp30_eCO2 = sgp30.eCO2;
@@ -574,7 +668,54 @@ void copy_data_to_ringbuffer(RING_BUFFER *buffer){
   buffer->sensor_data[idx].sgp30_rawEthanol = sgp30.rawEthanol;
   buffer->sensor_data[idx].sgp30_eCO2_base = eCO2_base;
   buffer->sensor_data[idx].sgp30_TVOC_base = TVOC_base;
-  buffer->sensor_data[idx].sgp30_status = 0;
+  buffer->sensor_data[idx].sgp30_status = sgp30_read_status;
 
   buffer->sensor_data[idx].n_people = number_of_people_in_room;
+  buffer->sensor_data[idx].n_people_status = people_read_status;
+}
+
+
+
+int isFull(RING_BUFFER *buffer){
+  return buffer->count ==  RING_BUFFER_SIZE;
+}
+
+int isEmpty(RING_BUFFER *buffer){
+  return buffer->count ==  0;
+}
+
+int enqueue(RING_BUFFER *buffer){
+    int ret_val = 0;
+    //if buffer is already full, it will
+    //overwrite the element in tail
+    if (isFull(buffer)){
+      //adjust new tail position
+      buffer->tail = (buffer->tail + 1 ) & (RING_BUFFER_SIZE -1);
+      // reduce one to count so after the next increment i continues
+      //to be RING_BUFFER_SIZE
+      buffer->count--;
+      ret_val = 1; //buffer full return
+    }
+
+    copy_data_to_ringbuffer(buffer);
+
+    //and operation is equivalent to modulo (%)
+    //when the size of the buffer is a power of 2
+    buffer->head = (buffer->head + 1 ) & (RING_BUFFER_SIZE -1);
+    buffer->count++;
+
+    return ret_val;
+}
+
+int dequeue(RING_BUFFER *buffer){
+  if (isEmpty(buffer)){
+    return 1;
+  }
+
+  //ver que hacer cuando servidor no contesta
+  send_data_to_server(&(buffer->sensor_data[buffer->tail]));
+  buffer->tail = (buffer->tail + 1 ) & (RING_BUFFER_SIZE -1);
+  buffer->count--;
+
+  return 0;
 }
