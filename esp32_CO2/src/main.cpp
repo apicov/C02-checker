@@ -21,6 +21,13 @@ RTC_DS3231 rtc;
 uint64_t chipid;
 HTTPClient http;
 
+//hall effect sesnors, input pins
+const int gekippt_sensor = 34;
+int gekippt_sensor_state;
+
+const int window_open_sensor = 23;
+int window_open_sensor_state;
+
 //co2 sensor
 Adafruit_SCD30  scd30;
 int scd30_init_status = -1;
@@ -119,13 +126,15 @@ typedef struct
     unsigned int n_people;
     int n_people_status;
 
+    int window_gekippt;
+    int window_open;
 
   } SENSOR_DATA;
 
 SENSOR_DATA sensor_data[1];
 int send_data_to_server(SENSOR_DATA *data);
 
-#define RING_BUFFER_SIZE 8
+#define RING_BUFFER_SIZE 512
 typedef struct 
 {
   SENSOR_DATA sensor_data[RING_BUFFER_SIZE];
@@ -150,6 +159,8 @@ int people_read_status = -1;
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
+  pinMode(gekippt_sensor, INPUT);
+  pinMode(window_open_sensor, INPUT);
   Serial.begin(9600);
   
 
@@ -248,6 +259,7 @@ void loop() {
     sgp30_read_status = -1;
   }
 
+
   if (WiFi.status() == WL_CONNECTED){
     //pings to phone ip to check if im present in room or not
     number_of_people_in_room = ping_phone(phone_ip_p) + ping_phone(phone_ip_u);
@@ -259,6 +271,17 @@ void loop() {
   else{
     people_read_status = -1;
   }
+
+  //read window sensors (state: 0 closed, 1 open)
+  gekippt_sensor_state = digitalRead(gekippt_sensor);
+  window_open_sensor_state = digitalRead(window_open_sensor);
+
+  Serial.print("window gekkipt?: ");
+  gekippt_sensor_state? Serial.println("yes"):Serial.println("no");
+  Serial.print("window open?: ");
+  window_open_sensor_state? Serial.println("yes"):Serial.println("no");
+
+
 
   //push data to buffer
   enqueue(&ring_buffer);
@@ -288,7 +311,7 @@ void loop() {
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
   // read it for a minute
-  for (int i = 0; i<40; i++){
+  for (int i = 0; i<52; i++){
     delay(1000);
 
     if( sgp30_init_status == 0){
@@ -393,7 +416,7 @@ int send_data_to_server(SENSOR_DATA *data)
    //http.addHeader("Content-Type", "text/plain"); 
    http.addHeader("Content-Type", "application/json");           
  
-   StaticJsonDocument<350> doc;
+   StaticJsonDocument<400> doc;
     // Add values in the document
     //
     doc["DATETIME"] = data->str_datetime;
@@ -418,6 +441,9 @@ int send_data_to_server(SENSOR_DATA *data)
     doc["SGP30_STAT"] = data->sgp30_status;
     
     doc["PEOPLE"] = data->n_people;
+
+    doc["W_GEKKIPT"] =  data->window_gekippt;
+    doc["W_OPEN"] = data->window_open;
    
     // Add an array.
     //
@@ -672,6 +698,9 @@ void copy_data_to_ringbuffer(RING_BUFFER *buffer){
 
   buffer->sensor_data[idx].n_people = number_of_people_in_room;
   buffer->sensor_data[idx].n_people_status = people_read_status;
+
+  buffer->sensor_data[idx].window_gekippt = gekippt_sensor_state;
+  buffer->sensor_data[idx].window_open = window_open_sensor_state;
 }
 
 
