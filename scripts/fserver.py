@@ -6,6 +6,7 @@ sensors_data = {}
 
 @app.route('/sensors/sensors', methods=['POST'])
 def get_scd30_data():
+    global sensors_data
     if request.method == 'POST':
        content = request.get_json(silent=True)
        sensors_data = content.copy()

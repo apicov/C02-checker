@@ -247,7 +247,7 @@ void loop() {
       sgp30_read_status = sgp30_get_data(-100.0,-100.0);
     }
 
-    sgp30_get_baseline_calibration(&TVOC_base, &eCO2_base);
+    sgp30_get_baseline_calibration(&eCO2_base, &TVOC_base);
     sgp30_print_data();
 
     if(sgp30_read_status ==-1){
@@ -441,6 +441,7 @@ int send_data_to_server(SENSOR_DATA *data)
     doc["SGP30_STAT"] = data->sgp30_status;
     
     doc["PEOPLE"] = data->n_people;
+    doc["PEOPLE_STAT"] = data->n_people_status;
 
     doc["W_GEKKIPT"] =  data->window_gekippt;
     doc["W_OPEN"] = data->window_open;
@@ -649,6 +650,9 @@ int sgp30_init(){
     return -1;
   }
   else{
+    //tewmporary! use eeprom
+    uint16_t eCO2_baseline = 38732, TVOC_baseline = 39635;
+    sgp30.setIAQBaseline(eCO2_baseline, TVOC_baseline);
     Serial.print("Found SGP30 serial #");
     Serial.print(sgp30.serialnumber[0], HEX);
     Serial.print(sgp30.serialnumber[1], HEX);
