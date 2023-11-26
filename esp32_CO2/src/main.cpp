@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <EEPROM.h>
 
 #include <WiFi.h>
 #include "HTTPClient.h"
@@ -87,14 +88,26 @@ int hm3301_init();
 
 //VOC sensor
 Adafruit_SGP30 sgp30;
-uint16_t TVOC_base = 0 , eCO2_base = 0;
+int sgp30_init();
 int sgp30_get_data(float temperature, float humidity);
 uint32_t getAbsoluteHumidity(float temperature, float humidity);
 void sgp30_print_data();
 int sgp30_get_baseline_calibration(uint16_t *eCO2_base, uint16_t *TVOC_base);
 int sgp30_init_status = -1;
 int sgp30_read_status = -1;
-int sgp30_init();
+
+//union for storing bytes in eeprom from a 2-byte int
+union u2bytes{
+  uint16_t b1x16;
+  uint8_t b2x8[2];
+} TVOC_base, eCO2_base;
+
+void sgp30_save_baseline_to_eeprom();
+void sgp30_read_baseline_from_eeprom();
+
+//counter to count til 2 hours (new baselines must me saved every two hours)
+volatile int sgp30_save_baselines_counter = 0;
+volatile int sgp30_save_baselines_flag = 0;
 
 /////////////
 //all sensors
@@ -161,13 +174,34 @@ volatile int timer_ready_flg = 0;
 void IRAM_ATTR Timer0_ISR(){
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     timer_ready_flg = 1;
+
+    sgp30_save_baselines_counter++;
+    if (sgp30_save_baselines_counter >= 120){
+      //every two hours
+      sgp30_save_baselines_counter = 0;
+      sgp30_save_baselines_flag = 1;
+    }
 }
+
+
+#define EEPROM_SIZE 4
+
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
   pinMode(gekippt_sensor, INPUT);
   pinMode(window_open_sensor, INPUT);
   Serial.begin(9600);
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  
+  //use only to store sgp30 calibrated baseline values forfirst time
+  /*delay(1000);
+  eCO2_base.b1x16 = 38732; // change values according to updated calibration
+  TVOC_base.b1x16 = 39635;
+  sgp30_save_baseline_to_eeprom();
+  Serial.println("sgp30 calibration saved");*/
 
   initWiFi();
   Serial.print("RRSI: ");
@@ -260,7 +294,7 @@ void loop() {
         sgp30_read_status = sgp30_get_data(-100.0,-100.0);
       }
 
-      sgp30_get_baseline_calibration(&eCO2_base, &TVOC_base);
+      sgp30_get_baseline_calibration(&eCO2_base.b1x16, &TVOC_base.b1x16);
       sgp30_print_data();
 
       if(sgp30_read_status ==-1){
@@ -308,6 +342,14 @@ void loop() {
     }
 
 
+    if (sgp30_save_baselines_flag){
+      sgp30_save_baselines_flag = 0;
+      sgp30_save_baseline_to_eeprom();
+      Serial.println("calibration saved!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    }
+
+
+
     if (isFull(&ring_buffer)){
         Serial.println("buffer full");
       }
@@ -339,7 +381,7 @@ void loop() {
     if(timer_ready_flg){
       break;
     }
-    
+
     delay(1000);
   }
 
@@ -397,11 +439,12 @@ int get_scd30_data()
       //the uc reinitializes the sensor.
       scd30_init_status = -1;
       return -1;
-    } 
+    }
     else {
       return 1;
     }
 }
+
 
 void print_SCD30_data( char * timestamp)
 { 
@@ -607,10 +650,10 @@ void sgp30_print_data(){
   Serial.print("Raw H2 "); Serial.print(sgp30.rawH2); Serial.print(" \t");
   Serial.print("Raw Ethanol "); Serial.print(sgp30.rawEthanol); Serial.println("");
 
-  Serial.print("****Baseline values: eCO2: 0x"); Serial.print(eCO2_base, HEX);
-  Serial.print(" & TVOC: 0x"); Serial.println(TVOC_base, HEX);
-  Serial.print("****Baseline values: eCO2: "); Serial.print(eCO2_base);
-  Serial.print(" & TVOC: "); Serial.println(TVOC_base);
+  Serial.print("****Baseline values: eCO2: 0x"); Serial.print(eCO2_base.b1x16, HEX);
+  Serial.print(" & TVOC: 0x"); Serial.println(TVOC_base.b1x16, HEX);
+  Serial.print("****Baseline values: eCO2: "); Serial.print(eCO2_base.b1x16);
+  Serial.print(" & TVOC: "); Serial.println(TVOC_base.b1x16);
 }
 
 
@@ -666,9 +709,10 @@ int sgp30_init(){
     return -1;
   }
   else{
-    //tewmporary! use eeprom
-    uint16_t eCO2_baseline = 38732, TVOC_baseline = 39635;
-    sgp30.setIAQBaseline(eCO2_baseline, TVOC_baseline);
+
+    sgp30_read_baseline_from_eeprom();
+    sgp30.setIAQBaseline(eCO2_base.b1x16, TVOC_base.b1x16);
+
     Serial.print("Found SGP30 serial #");
     Serial.print(sgp30.serialnumber[0], HEX);
     Serial.print(sgp30.serialnumber[1], HEX);
@@ -712,8 +756,8 @@ void copy_data_to_ringbuffer(RING_BUFFER *buffer){
   buffer->sensor_data[idx].sgp30_eCO2 = sgp30.eCO2;
   buffer->sensor_data[idx].sgp30_rawH2 = sgp30.rawH2;
   buffer->sensor_data[idx].sgp30_rawEthanol = sgp30.rawEthanol;
-  buffer->sensor_data[idx].sgp30_eCO2_base = eCO2_base;
-  buffer->sensor_data[idx].sgp30_TVOC_base = TVOC_base;
+  buffer->sensor_data[idx].sgp30_eCO2_base = eCO2_base.b1x16;
+  buffer->sensor_data[idx].sgp30_TVOC_base = TVOC_base.b1x16;
   buffer->sensor_data[idx].sgp30_status = sgp30_read_status;
 
   buffer->sensor_data[idx].n_people = number_of_people_in_room;
@@ -767,4 +811,21 @@ int dequeue(RING_BUFFER *buffer){
   buffer->count--;
 
   return 0;
+}
+
+void sgp30_save_baseline_to_eeprom(){
+  EEPROM.write(0, eCO2_base.b2x8[0]);
+  EEPROM.write(1, eCO2_base.b2x8[1]);
+
+  EEPROM.write(2, TVOC_base.b2x8[0]);
+  EEPROM.write(3, TVOC_base.b2x8[1]);
+
+  EEPROM.commit();
+}
+void sgp30_read_baseline_from_eeprom(){
+  eCO2_base.b2x8[0] = EEPROM.read(0);
+  eCO2_base.b2x8[1] = EEPROM.read(1);
+
+  TVOC_base.b2x8[0] = EEPROM.read(2);
+  TVOC_base.b2x8[1] = EEPROM.read(3);
 }
