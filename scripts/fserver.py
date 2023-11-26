@@ -37,7 +37,7 @@ except:
 
 @app.route('/sensors/sensors', methods=['POST'])
 def get_scd30_data():
-    global sensors_sample
+    global sensors_sample, db, conn
     if request.method == 'POST':
        content = request.get_json(silent=True)
        sensors_sample = content.copy()
@@ -47,6 +47,7 @@ def get_scd30_data():
            air_df = pd.DataFrame(sensors_sample, index=[0])
            air_df['DATETIME'] = pd.to_datetime(air_df['DATETIME'], format='%Y-%m-%d %H:%M:%S')
            air_df.to_sql(TABLE, conn,schema='public',index=False, if_exists= 'append')
+           conn.commit()
        except:
            print("problem writing to database")
 
