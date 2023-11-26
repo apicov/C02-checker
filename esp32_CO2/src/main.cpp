@@ -397,7 +397,7 @@ int ping_phone(IPAddress phone_ip){
   Serial.print("Pinging ip ");
   Serial.println(phone_ip);
 
-  if(Ping.ping(phone_ip,2)) {
+  if(Ping.ping(phone_ip,3)) {
     Serial.println("Success!!\n");
     return 1;
   } else {
