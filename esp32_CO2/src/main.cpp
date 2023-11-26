@@ -155,14 +155,19 @@ void init_sensors();
 
 int people_read_status = -1;
 
+hw_timer_t *Timer0_Cfg = NULL;
+volatile int timer_ready_flg = 0;
 
+void IRAM_ATTR Timer0_ISR(){
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    timer_ready_flg = 1;
+}
 
 void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
   pinMode(gekippt_sensor, INPUT);
   pinMode(window_open_sensor, INPUT);
   Serial.begin(9600);
-  
 
   initWiFi();
   Serial.print("RRSI: ");
@@ -173,6 +178,12 @@ void setup() {
   //wait for a minute to ensure there will be data available from the co2 sensor
   delay(60000);
 
+  //set up timer 0 interrupt for 60 seconds
+  Timer0_Cfg = timerBegin(0, 8000, true);
+  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
+  timerAlarmWrite(Timer0_Cfg, 600000, true);
+  timerAlarmEnable(Timer0_Cfg);
+
 }
 
 
@@ -182,138 +193,137 @@ void loop() {
   Serial.printf("%08X\n",(uint32_t)chipid);//print Low 4bytes.
   delay(13000);*/
 
-  //connect to network in case there is no conection
-  if (WiFi.status() != WL_CONNECTED){
-    initWiFi();
-    Serial.print("wifi connected.");
-  }
+  if (timer_ready_flg){
+    timer_ready_flg = 0;
+    //connect to network in case there is no conection
+    if (WiFi.status() != WL_CONNECTED){
+      initWiFi();
+      Serial.print("wifi connected.");
+    }
 
-  //try to reinitialize sensors with init_status -1
-  init_sensors();
+    //try to reinitialize sensors with init_status -1
+    init_sensors();
 
-  //if sensor scd30 was correctly initialized
-  if (scd30_init_status == 0 ){
+    //if sensor scd30 was correctly initialized
+    if (scd30_init_status == 0 ){
 
-    //wait for co2 sensor to have available data
-    scd30_read_status = get_scd30_data();
-    while(scd30_read_status == 1){
+      //wait for co2 sensor to have available data
       scd30_read_status = get_scd30_data();
-      delay(1000);
+      while(scd30_read_status == 1){
+        scd30_read_status = get_scd30_data();
+        delay(1000);
+      }
+
+      if (scd30_read_status == -1){
+        Serial.println("error scd30");
+      }
+
+      print_SCD30_data(str_datetime);
+    }
+    else{
+      scd30_read_status = -1;
     }
 
-    if (scd30_read_status == -1){
-      Serial.println("error scd30");
+
+
+    if (rtc_init_status == 0){
+      read_rtc(str_datetime);
+      rtc_read_status = 0;
+    }
+    else{
+      rtc_read_status = -1;
+      //poner que lea hora del internet
+      Serial.println("rtc not found");
+    }
+    
+
+    if (hm3301_init_status == 0){
+      hm3301_read_status = hm3301_get_data(hm3301_values);
+      hm3301_print_results(hm3301_values);
+
+      if(hm3301_read_status ==-1){
+        Serial.println("HM330X read result failed!!!");
+      }
+    }
+    else{
+      hm3301_read_status = -1;
     }
 
-    print_SCD30_data(str_datetime);
-  }
-  else{
-    scd30_read_status = -1;
-  }
+
+    if (sgp30_init_status == 0){
+      //if scd30 is working, use its temp and humidity readings
+      // to compensate and improve sgp30 accuracy
+      if ((scd30_init_status == 0) && (scd30_read_status == 0)){
+        sgp30_read_status = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
+      }
+      else{//dont use compensation
+        sgp30_read_status = sgp30_get_data(-100.0,-100.0);
+      }
+
+      sgp30_get_baseline_calibration(&eCO2_base, &TVOC_base);
+      sgp30_print_data();
+
+      if(sgp30_read_status ==-1){
+        Serial.println("sgp30 Measurement failed");
+      }
+
+    }
+    else{
+      sgp30_read_status = -1;
+    }
+
+
+    if (WiFi.status() == WL_CONNECTED){
+      //pings to phone ip to check if im present in room or not
+      number_of_people_in_room = ping_phone(phone_ip_p) + ping_phone(phone_ip_u);
+      Serial.print("people: ");
+      Serial.println(number_of_people_in_room);
+      Serial.println("");
+      people_read_status = 0;
+    }
+    else{
+      people_read_status = -1;
+    }
+
+    //read window sensors (state: 0 closed, 1 open)
+    gekippt_sensor_state = digitalRead(gekippt_sensor);
+    window_open_sensor_state = digitalRead(window_open_sensor);
+
+    Serial.print("window gekkipt?: ");
+    gekippt_sensor_state? Serial.println("yes"):Serial.println("no");
+    Serial.print("window open?: ");
+    window_open_sensor_state? Serial.println("yes"):Serial.println("no");
 
 
 
-  if (rtc_init_status == 0){
-    read_rtc(str_datetime);
-    rtc_read_status = 0;
-  }
-  else{
-    rtc_read_status = -1;
-    //poner que lea hora del internet
-    Serial.println("rtc not found");
-  }
+    //push data to buffer
+    enqueue(&ring_buffer);
+
   
-
-  if (hm3301_init_status == 0){
-    hm3301_read_status = hm3301_get_data(hm3301_values);
-    hm3301_print_results(hm3301_values);
-
-    if(hm3301_read_status ==-1){
-      Serial.println("HM330X read result failed!!!");
-    }
-  }
-  else{
-    hm3301_read_status = -1;
-  }
-
-
-  if (sgp30_init_status == 0){
-    //if scd30 is working, use its temp and humidity readings
-    // to compensate and improve sgp30 accuracy
-    if ((scd30_init_status == 0) && (scd30_read_status == 0)){
-      sgp30_read_status = sgp30_get_data(scd30.temperature, scd30.relative_humidity);
-    }
-    else{//dont use compensation
-      sgp30_read_status = sgp30_get_data(-100.0,-100.0);
+    //if connected to the network, send data in buffer to server
+    if((WiFi.status() == WL_CONNECTED)){
+      while (!isEmpty(&ring_buffer)){
+        dequeue(&ring_buffer);
+      }
     }
 
-    sgp30_get_baseline_calibration(&eCO2_base, &TVOC_base);
-    sgp30_print_data();
 
-    if(sgp30_read_status ==-1){
-      Serial.println("sgp30 Measurement failed");
-    }
-
+    if (isFull(&ring_buffer)){
+        Serial.println("buffer full");
+      }
+      Serial.print("tail:");
+      Serial.println(ring_buffer.tail);
+      Serial.print("head:");
+      Serial.println(ring_buffer.head);
+      Serial.print("count:");
+      Serial.println(ring_buffer.count);
   }
-  else{
-    sgp30_read_status = -1;
-  }
-
-
-  if (WiFi.status() == WL_CONNECTED){
-    //pings to phone ip to check if im present in room or not
-    number_of_people_in_room = ping_phone(phone_ip_p) + ping_phone(phone_ip_u);
-    Serial.print("people: ");
-    Serial.println(number_of_people_in_room);
-    Serial.println("");
-    people_read_status = 0;
-  }
-  else{
-    people_read_status = -1;
-  }
-
-  //read window sensors (state: 0 closed, 1 open)
-  gekippt_sensor_state = digitalRead(gekippt_sensor);
-  window_open_sensor_state = digitalRead(window_open_sensor);
-
-  Serial.print("window gekkipt?: ");
-  gekippt_sensor_state? Serial.println("yes"):Serial.println("no");
-  Serial.print("window open?: ");
-  window_open_sensor_state? Serial.println("yes"):Serial.println("no");
-
-
-
-  //push data to buffer
-  enqueue(&ring_buffer);
-
- 
-  //if connected to the network, send data in buffer to server
-  if((WiFi.status() == WL_CONNECTED)){
-    while (!isEmpty(&ring_buffer)){
-      dequeue(&ring_buffer);
-    }
-  }
-
-
-  if (isFull(&ring_buffer)){
-      Serial.println("buffer full");
-    }
-    Serial.print("tail:");
-    Serial.println(ring_buffer.tail);
-    Serial.print("head:");
-    Serial.println(ring_buffer.head);
-    Serial.print("count:");
-    Serial.println(ring_buffer.count);
-
 
 
 
   //for the autocalibration to work,
   //sgp30 sensor must be read every second
-  // read it for a minute
-  for (int i = 0; i<52; i++){
-    delay(1000);
-
+  while(1){
     if( sgp30_init_status == 0){
 
       if ((scd30_init_status == 0) && (scd30_read_status == 0)){
@@ -325,6 +335,12 @@ void loop() {
       
     }
 
+    //check timer flag, go out if timer ready
+    if(timer_ready_flg){
+      break;
+    }
+    
+    delay(1000);
   }
 
   

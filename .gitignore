@@ -40,5 +40,5 @@
 
 
 #privat edata
-**/build/
+**/.pio/build/
 *private_data.*
