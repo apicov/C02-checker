@@ -28,8 +28,8 @@ TABLE = p_data['table']
 
 #connect to database
 try:
-    db = create_engine(f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}")
-    conn = db.connect()
+    engine = create_engine(f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}")
+    #conn = engine.connect()
 except:
     print('Could not open database')
 
@@ -37,7 +37,7 @@ except:
 
 @app.route('/sensors/sensors', methods=['POST'])
 def get_scd30_data():
-    global sensors_sample, db, conn
+    global sensors_sample, engine 
     if request.method == 'POST':
        content = request.get_json(silent=True)
        sensors_sample = content.copy()
@@ -46,13 +46,14 @@ def get_scd30_data():
        try:
            air_df = pd.DataFrame(sensors_sample, index=[0])
            air_df['DATETIME'] = pd.to_datetime(air_df['DATETIME'], format='%Y-%m-%d %H:%M:%S')
-           air_df.to_sql(TABLE, conn,schema='public',index=False, if_exists= 'append')
-           conn.commit()
+           air_df.to_sql(TABLE, engine,schema='public',index=False, if_exists= 'append')
+          # conn.commit()
        except:
            print("problem writing to database")
 
        #print database last content, temporary?
-       print(pd.read_sql_query(sqlalchemy.text('select * from ' + TABLE), con=conn).tail())
+       with engine.connect() as connection:
+           print(pd.read_sql_query(sqlalchemy.text('select * from ' + TABLE), con=connection).tail())
 
        print(sensors_sample)
     return sensors_sample
