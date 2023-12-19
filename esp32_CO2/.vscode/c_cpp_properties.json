@@ -10,6 +10,7 @@
             "includePath": [
                 "/home/pico/code/CO2-checker/esp32_CO2/include",
                 "/home/pico/code/CO2-checker/esp32_CO2/src",
+                "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "/home/pico/code/CO2-checker/esp32_CO2/.pio/libdeps/esp32dev/Adafruit SGP30 Sensor",
@@ -218,7 +219,6 @@
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
-                "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/ESP32/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                 "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",
@@ -247,6 +247,7 @@
                 "path": [
                     "/home/pico/code/CO2-checker/esp32_CO2/include",
                     "/home/pico/code/CO2-checker/esp32_CO2/src",
+                    "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "/home/pico/code/CO2-checker/esp32_CO2/.pio/libdeps/esp32dev/Adafruit SGP30 Sensor",
@@ -455,7 +456,6 @@
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
-                    "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/ESP32/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                     "/home/pico/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",

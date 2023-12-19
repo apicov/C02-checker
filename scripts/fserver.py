@@ -53,7 +53,8 @@ def get_scd30_data():
 
        #print database last content, temporary?
        with engine.connect() as connection:
-           print(pd.read_sql_query(sqlalchemy.text('select * from ' + TABLE), con=connection).tail())
+           #print(pd.read_sql_query(sqlalchemy.text('select * from ' + TABLE), con=connection).tail())
+           print(pd.read_sql_query(sqlalchemy.text(f'SELECT * FROM {TABLE} ORDER BY "DATETIME" DESC LIMIT 10'), con=connection))
 
        print(sensors_sample)
     return sensors_sample
